@@ -1,7 +1,16 @@
+Now we have tools for signing and verifying on spks.
+spk:sign/1
+spk:unwrap_sig/1 %this converts the new kind of signed spk into something that can be verified the old way, it leaves the old kind of spk unchanged.
+
+* replace every case where we sign an spk with spk:sign.
+* replace every case where we check a spk's signature with testnet_sign:verify(spk:unwrap_sig(Stx)).
 
 
 
+add endpoints to the amoveo api to access other amoveo services that could be running on the same machine. use white-lists, don't let them connect to internal api or run anything dangerous.
 
+
+simpler way to customize port instead of 8080
 
 
 

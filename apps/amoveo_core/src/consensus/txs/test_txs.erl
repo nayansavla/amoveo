@@ -25,6 +25,7 @@ test() ->
     S = test(11),%try out the oracle
     S = test(16),%try out the oracle further
     %S = test(17),%blocks filled with create account txs
+    %S = test(28),
     timer:sleep(300),
     S.
 absorb(Tx) -> 
@@ -778,7 +779,7 @@ test(15) ->
     timer:sleep(150),
     Txs2 = (tx_pool:get())#tx_pool.txs,
     %io:fwrite("~s", [packer:pack({slash_exists, Txs2})]),
-    %timer:sleep(2000),
+    timer:sleep(2000),
     true = slash_exists(Txs2),%check that the channel_slash transaction exists in the tx_pool.
     %Block = block:mine(block:make(PH, Txs2, 1), 10000000000),%1 is the master pub
     %block:check2(Block),
@@ -902,8 +903,72 @@ test(23) ->
 	{ok, <<_:256>>} -> 1=2;
 	_ -> ok
     end,
-    success.
+    success;
+test(28) ->    
+    io:fwrite(" new channel tx2\n"),
+    headers:dump(),
+    block:initialize_chain(),
+    tx_pool:dump(),
+    BP = block:get_by_height(0),
+    PH = block:hash(BP),
+    Trees = block_trees(BP),
+    {NewPub,NewPriv} = testnet_sign:new_key(),
+    Fee = constants:initial_fee() + 20,
+    Amount = 5000000000,
+    {Ctx, _Proof} = create_account_tx:new(NewPub, Amount, Fee, constants:master_pub(), Trees),
+    Stx = keys:sign(Ctx),
+    absorb(Stx),
+    timer:sleep(100),
+    mine_blocks(1),
+    timer:sleep(100),
+    CID = <<5:256>>,
+
+    Delay = 0,
+
+    LimitOrderTime = 10,
+    SPK = spk:new(NewPub, 1, CID, [], 0,0,0,Delay),
+    Offer = testnet_sign:sign_tx(new_channel_tx2:make_offer(CID, NewPub, LimitOrderTime, 100, 200, Delay, 5000, SPK), NewPub, NewPriv),
+    %io:fwrite("\n"),
+    %io:fwrite(packer:pack(Offer)),
+%["nc_offer","BIVZhs16gtoQ/uUMujl5aSutpImC4va8MewgCveh6MEuDjoDvtQqYZ5FeYcUhY/QLjpCBrXjqvTtFiN4li0Nhjo=","undefined",0,100,200,"undefined",30,"AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAU=","2mgGO1gTdh6gkswwBT0wQWj+W5W/owYv6+ezEQ0bCC4="]
+    Ctx2 = new_channel_tx2:make_dict(keys:pubkey(), Offer, Fee, SPK),
+    SPKSig2 = element(5, Ctx2),
+    NewData = spk:hash(SPK),
+    Sig = testnet_sign:sign(NewData, NewPriv),
+    SSPK2 = {signed, SPK, {2, SPKSig2}, {2, Sig}},
     
+    %SSPK2 = spk:sign(SSPK, 1),
+    io:fwrite("test txs 28 sspk2 "),
+    io:fwrite(packer:pack(SSPK2)),
+    io:fwrite("\n"),
+    true = spk:verify_sig(SSPK2, keys:pubkey(), NewPub),
+    %Ctx2 = new_channel_tx:make_dict(CID, constants:master_pub(), NewPub, 100, 200, Delay, Fee),
+    %Stx2 = keys:sign(Ctx2),
+    %SStx2 = testnet_sign:sign_tx(Ctx2, NewPub, NewPriv), 
+    SStx2 = keys:sign(Ctx2),
+    absorb(SStx2),
+    mine_blocks(1),
+    timer:sleep(100),
+
+    Ctx4 = channel_solo_close:make_dict(constants:master_pub(), Fee, SSPK2, []),
+
+    %Ctx4 = channel_team_close_tx:make_dict(CID, 0, Fee),
+    Stx4 = keys:sign(Ctx4),
+    %SStx4 = testnet_sign:sign_tx(Stx4, NewPub, NewPriv),
+    absorb(Stx4),
+    mine_blocks(1),
+    timer:sleep(100),
+
+
+    Ctx5 = channel_timeout_tx:make_dict(constants:master_pub(),CID,Fee),
+    Stx5 = keys:sign(Ctx5),
+    absorb(Stx5),
+    mine_blocks(1),
+    timer:sleep(100),
+    
+    empty = trees:get(channels, <<5:256>>),
+
+    success.
     
 test18(0) -> success;
 test18(N) ->
