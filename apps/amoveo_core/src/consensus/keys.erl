@@ -4,7 +4,8 @@
 
 -behaviour(gen_server).
 -export([start_link/0,code_change/3,handle_call/3,handle_cast/2,handle_info/2,init/1,terminate/2, 
-	 pubkey/0, sign/1, raw_sign/1, load/3, unlock/1,
+	 pubkey/0, sign/1, raw_sign/1,
+         load/3, unlock/1,
 	 lock/0, status/0, change_password/2, new/1,
 	 shared_secret/1,
 	 encrypt/2, decrypt/1, keypair/0,
@@ -12,10 +13,16 @@
 %-define(LOC, "keys.db").
 -define(LOC, constants:keys()).
 -define(SANE(), <<"sanity">>).
-start_link() -> gen_server:start_link({local, ?MODULE}, ?MODULE, ok, []).
-code_change(_OldVsn, State, _Extra) -> {ok, State}.
-terminate(_, _) -> io:fwrite("keys died. Possibly due to incorrect password.\n"), ok.
-format_status(_,[_,_]) -> [{[], [{"State", []}]}].
+start_link() -> 
+    gen_server:start_link({local, ?MODULE}, 
+                          ?MODULE, ok, []).
+code_change(_OldVsn, State, _Extra) -> 
+    {ok, State}.
+terminate(_, _) -> 
+    io:fwrite("keys died. Possibly due to incorrect password.\n"), 
+    ok.
+format_status(_,[_,_]) -> 
+    [{[], [{"State", []}]}].
 -record(f, {pub = "", priv = "", sanity = ""}).
 %sanity is only used on the hard drive, not in ram.
 init(ok) -> 
