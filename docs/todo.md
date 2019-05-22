@@ -1,4 +1,147 @@
-in the light node, the contract offers should have time limits.
+make a javascript tool for managing channel states.
+It should tell you which channels are ready to be closed, and display a chart for how much money is in each contract, how much longer until it can be closed, and store it all in a single file.
+
+
+glossary long-veo/stablecoin on otc_derivatives and otc_listener
+
+
+start closing some oracles
+
+add an api request so that we can know if the node is storing the blocks in the new way, so we can use an alternative syncing protocol.
+
+
+update dump:file_manager ram version to use ets and be faster.
+
+* sync.erl should work differently if they store the blocks the new way.
+
+
+in the light node, when we look up oracles, we should verify that the hash of the question tx matches the hash stored in the merkel tree.
+
+
+sharding.
+
+
+
+in the light node update from bigInt js library to the BigInt built in the browser.
+
+
+another button in otc_derivatives, this one for using oracles to make an inverse stablecoin.
+So if the price of amazon shares in USD increases 5%, then your inverse stable shares will have decreased 5%.
+The only difference is that whatever price the user types in as the initial price, replace that with (limit_max - the_price_they_entered). because everything is flipped vs a normal stablecoin.
+
+
+people want shorts in holo/rvn/abbc
+
+
+otc_listener should display the channel ID.
+
+
+new_oracle should make some standard format for oracles so that we can easily parse the oracle question and other tools can say if it is a USD stablecoin, or a BTC stablecoin, or whatever.
+It could translate block heights to dates.
+new_oracle page simplification.
+We only ask for: 3-letter ticker, maturity data, and max price, short/long
+Then the oracle question will be more standardized, so we can parse it easier at other steps.
+
+Also standardize inverse stablecoin oracles, so the interface for making bets can be simpler.
+
+Maybe change the name on the "stablecoin" button in otc_derivatives. It is for more things than just stablecoins.
+"scalar - simplified" and "scalar - advanced" could be good names on the buttons.
+
+
+The p2p derivatives pages have too much info. remove everything that we do not need.
+
+add an atomic swap feature to api. look at the decred atomic swap example.
+
+channel team close should have a limit, so it needs to be posted in the next 10 blocks to be valid.
+To prevent people using it as a free option.
+* being written in channel team close tx 2.
+
+
+
+
+reduce orphan rate on small pools.
+
+a tool to review the state of your active contract.
+
+stablecoin interface in the light node should accept bets in either direction.
+
+instead of displaying the oracle upper limit, it should just have an error message and block you from continuing if it can't load the upper limit.
+
+maybe we need an extra confirmation so that with the scalar interface you don't accidentally make a bet where your partner puts nothing at stake. display the same text from otc_listener in otc_derivatives when making a contract.
+
+add salt to amoveo smart contracts for privacy
+
+moving bets to a direct path.
+
+a website for listing channel offers.
+
+
+maybe it was a mistake to set up int_handler.erl to always return 2-tuples that start with "ok".
+
+
+What if 2 people try to match to create the same channel? is the error message useful?
+
+
+in otc_finisher, if the oracle is already closed test making a ctc to close the channel.
+
+
+we should use nlocktime on all the txs so that it isn't possible to profitably undercut and include future txs at an earlier height. It should be impossible to move any tx into a block height from earlier than the tx was made.
+* if we add maturity times to block rewards, then we can't use the block reward for anyone-can-pay txs.
+
+
+hard update to support something similar to anyone-can-spend tx types in bitcoin. This is an important tool so that miners can share windfalls, that way miners never have an incentive to undercut each other's blocks.
+Thank you to Fernando Nieto https://twitter.com/fnietom for explaining this solution to me.
+
+
+
+
+option to customize the delay when making p2p oracles.
+
+
+refactor the chalang market and oracle a lot.
+
+
+Maybe tx fees should be put into a pool, and the pool distributed to the miners over time.
+This way we can safely make the block reward lower than the tx fees.
+
+
+oracle bets should reference the previous block's hash, that way you can't reuse many in a reorg attempt.
+
+api to check what a scalar oracle will output if no more bets are made.
+
+test solo-closing the channel from the p2p derivatives node. make sure the correct amount of money is moved.
+
+test the case where someone pays a higher fee.
+* the limit order trick for new channels probably does not work in the long run, because you can make off-chain tx fees.
+
+unmatched:dict_significant_volume, we should probably be checking if manyOrders is >1, not 2.
+
+would be nice if in otc_finisher the same file upload spot could accept either channel states or trade offers, so that the interface can be simpler.
+
+
+api:oracle_bet should have a useful error if you try and use a floating point value
+
+light node should tell you if you have insufficient balance to ask the oracle a question.
+
+figure out what went wrong with the stablecoin contract to Evan Pan.
+
+when you make contracts in the p2p tool, we should check that you private key matches the address in the channel of the contract.
+
+in otc_finisher.js we need to make it clearer how to write the final price. people confuse veo/usd with usd/veo.
+We should have some confirmation saying what portion of the veo goes to each party.
+
+similarly, if you accept a proposal from someone, it should say something about how much of the money goes to each party.
+
+
+We should sum up input money and output money from each block to double-check that there is no counterfeiting.
+
+combinatorial chalang contract tested. combinatorial_market.erl written.
+
+in the light node, the contract offers should have time limits other than 100.
+
+in otc_finisher, it should display the details of whatever bet you have made.
+
+in otc_finisher, we never need to save the channel state, so get rid of that button.
 
 consider paying the exchange digitalprice.io to list Amoveo.
 
@@ -23,6 +166,9 @@ simpler way to customize port instead of 8080
 
 
 ### Other hard fork ideas
+
+
+we should have a time limit in channel team close txs to prevent the free option problem in some cases where they want to close the channel early.
 
 
 Maybe block rewards should be locked for a week to prevent P+epsilon attacks against the consensus mechanism.

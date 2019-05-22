@@ -54,6 +54,12 @@ doit({account, Pubkey}) ->
 doit({pubkey}) -> {ok, keys:pubkey()};
 doit({height}) -> {ok, block:height()};
 doit({version}) -> {ok, version:doit(block:height())};
+doit({version, 1}) -> 
+    {ok, Version} = application:get_env(amoveo_core, db_version),
+    {ok, Version};
+doit({version, 2, N}) ->
+    F = forks:get(N),
+    {ok, F};
 doit({give_block, Block}) -> %block can also be a list of blocks.
     io:fwrite("ext_handler receiving blocks\n"),
     %Response = block_absorber:save(Block),
@@ -70,8 +76,9 @@ doit({give_block, Block}) -> %block can also be a list of blocks.
 doit({block, N}) when (is_integer(N) and (N > -1))->
     {ok, block:get_by_height(N)};
 doit({blocks, Many, N}) -> 
-    true = Many < 60,
-    X = block_reader:doit(Many, N),
+    %true = Many < 60,
+    %X = block_reader:doit(Many, N),
+    X = block_db:read(Many, N),
     %X = many_blocks(Many, N),
     {ok, X};
 doit({header, N}) when is_integer(N) -> 

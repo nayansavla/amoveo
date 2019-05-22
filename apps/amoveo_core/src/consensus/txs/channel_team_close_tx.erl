@@ -50,13 +50,28 @@ go(Tx, Dict, NewHeight, _) ->
     Aid2 = Tx#ctc.aid2,
     false = Aid1 == Aid2,
     %io:fwrite("team close 3\n"),
-    Dict2 = channels:dict_delete(ID, Dict),
+    %Dict2 = channels:dict_delete(ID, Dict),
+    F17 = forks:get(17),
+    Dict2 = if 
+                NewHeight > F17 -> 
+                    NewChannel = channels:dict_update(ID, Dict, none, 0, 0, 0, 0, NewHeight, true),
+                    channels:dict_write(NewChannel, Dict);
+                true ->
+                    channels:dict_delete(ID, Dict)
+            end,
     %io:fwrite("team close 4\n"),
     Bal1 = channels:bal1(OldChannel),
     Bal2 = channels:bal2(OldChannel),
     Amount = Tx#ctc.amount,
     HF = Tx#ctc.fee div 2,
     %io:fwrite("team close 5\n"),
+    F16 = forks:get(16),
+    if
+        NewHeight > F16 ->
+            true = (Bal1 + Amount) > -1,
+            true = (Bal2 - Amount) > -1;
+        true -> true
+    end,
     Acc1 = accounts:dict_update(Aid1, Dict, Bal1 + Amount - HF, Tx#ctc.nonce),
     %io:fwrite("team close 6\n"),
     Acc2 = accounts:dict_update(Aid2, Dict, Bal2 - Amount - HF, none),

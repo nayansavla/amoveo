@@ -11,7 +11,7 @@ talk(Msg, {IP, Port}) ->
     talk(Msg, build_string_peer(IP, Port));
 
 talk(Msg, Peer) ->
-    talk_helper(Msg, Peer, ?RETRY, 20000).
+    talk_helper(Msg, Peer, ?RETRY, 1200000).
 
 talk(Msg, IP, Port) ->
     talk(Msg, build_string_peer(IP, Port)).
@@ -73,7 +73,7 @@ talk_helper(Msg, Peer, N, TimeOut) ->
 		    packer:unpack(R)
 	    end;
         {error, socket_closed_remotely} ->
-            check_print("talk_helper socket closed remotely. attempting to reconnect \n"),
+            %check_print("talk_helper socket closed remotely. attempting to reconnect \n"),
             talk_helper(Msg, Peer, N - 1, TimeOut);
         {error, timeout} ->
             check_print("talk_helper timeout. attempting to reconnect \n"),
@@ -85,7 +85,7 @@ talk_helper(Msg, Peer, N, TimeOut) ->
 	    bad_peer;
             %talk_helper(Msg, Peer, N - 1, TimeOut);
         {error, {failed_connect, _}} ->
-            check_print("talk_helper failed_connect 1. will ignore this peer. \n"),
+            %check_print("talk_helper failed_connect 1. will ignore this peer. \n"),
 	    %check_print(PM),
 	    bad_peer;
             %talk_helper(Msg, Peer, N - 1, TimeOut);

@@ -42,6 +42,7 @@ go(Tx, Dict, NewHeight, NonceCheck) ->
     true = ScriptPubkey#spk.space_gas < SpaceGas,
     CID = (testnet_sign:data(SPK))#spk.cid,
     OldChannel = channels:dict_get(CID, Dict),
+    0 = channels:closed(OldChannel),
     0 = channels:amount(OldChannel),
     Acc1 = channels:acc1(OldChannel),
     Acc2 = channels:acc2(OldChannel),
@@ -50,7 +51,14 @@ go(Tx, Dict, NewHeight, NonceCheck) ->
     Acc1 = ScriptPubkey#spk.acc1,
     %Acc2 = ScriptPubkey#spk.acc2,
     SS = Tx#csc.scriptsig,
-    {Amount, NewCNonce, Delay} = spk:dict_run(fast, SS, ScriptPubkey, NewHeight, 0, Dict),
+    CB1OC = channels:bal1(OldChannel),
+    CB2OC = channels:bal2(OldChannel),
+    {Amount0, NewCNonce, Delay} = spk:dict_run(fast, SS, ScriptPubkey, NewHeight, 0, Dict),
+    F15 = forks:get(15),
+    Amount = if
+                 NewHeight > F15 -> min(CB1OC, max(-CB2OC, Amount0));
+                 true -> Amount0
+             end,
     %false = Amount == 0,
     CNOC = channels:nonce(OldChannel),
     %io:fwrite("closing channel 0\n"),
@@ -64,6 +72,9 @@ go(Tx, Dict, NewHeight, NonceCheck) ->
 		    NewChannel = channels:dict_update(CID, Dict, NewCNonce, 0, 0, Amount, Delay, NewHeight, false),
 		    CB1NC = channels:bal1(NewChannel),
 		    CB2NC = channels:bal2(NewChannel),
+                    %io:fwrite("ch1, ch2, amount (from 1 to 2)\n"),
+                    %io:fwrite(packer:pack([CB1NC, CB2NC, Amount])),
+                    %io:fwrite("\n"),
 		    if 
 			((-1 < (CB1NC-Amount)) and 
 			 (-1 < (CB2NC+Amount))) ->

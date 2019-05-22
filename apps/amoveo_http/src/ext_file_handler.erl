@@ -17,6 +17,7 @@ handle(Req, _) ->
 	end,
     PrivDir = list_to_binary(PrivDir0),
     true = case F of
+	       <<"/channels_interface.js">> -> true;
 	       <<"/channels_lookup.js">> -> true;
 	       <<"/governance.js">> -> true;
 	       <<"/glossary.js">> -> true;
@@ -29,6 +30,7 @@ handle(Req, _) ->
 	       <<"/new_oracle.js">> -> true;
 	       <<"/messenger.js">> -> true;
 	       <<"/otc_finisher.html">> -> true;
+	       <<"/otc_finisher_old.html">> -> true;
 	       <<"/otc_finisher_old.js">> -> true;
 	       <<"/otc_finisher.js">> -> true;
 	       <<"/otc_listener.js">> -> true;

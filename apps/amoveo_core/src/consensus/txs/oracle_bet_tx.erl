@@ -117,7 +117,16 @@ go2(Tx, Dict, NewHeight) -> %doit is split into two pieces because when we close
     From = Tx#oracle_bet.from,
     OID = Tx#oracle_bet.id,
     Oracle0 = oracles:dict_get(OID, Dict),
-    OIL = governance:dict_get_value(oracle_initial_liquidity, Dict),
+    Gov = Oracle0#oracle.governance,
+    F14 = forks:get(14),
+    OIL = if
+              NewHeight < F14 ->
+                  governance:dict_get_value(oracle_initial_liquidity, Dict);
+              Gov == 0 -> 
+                  governance:dict_get_value(oracle_question_liquidity, Dict);
+              true ->
+                  governance:dict_get_value(oracle_initial_liquidity, Dict)
+          end,
     F10 = NewHeight > forks:get(10),
     UMT = if%
 	      F10  -> unmatched;
@@ -147,12 +156,23 @@ go2(Tx, Dict, NewHeight) -> %doit is split into two pieces because when we close
 	TxType == OracleType ->
                 ManyOrders = dict_orders_many(OID, Dict, UMT),
                 Minimum = OIL * det_pow(2, max(1, ManyOrders)), 
+                if
+                    (Amount < Minimum) ->
+                        io:fwrite("amount minimum\n"),
+                        io:fwrite(packer:pack([Amount, Minimum])),
+                        io:fwrite("\n");
+                    true -> ok
+                end,
                 true = Amount >= Minimum,
+                if
+                    ((UMT == unmatched) and (NewHeight < F14)) -> 1=2;%can be removed after fork 14 activates.
+                    true -> ok
+                end,
                 Dict2 = UMT:dict_add(NewOrder, OID, Dict),
                 oracles:dict_write(Oracle, Dict2);
 	true ->
                 {Matches1, Matches2, Next, Dict2} =
-                    UMT:dict_match(NewOrder, OID, Dict),
+                    UMT:dict_match(NewOrder, OID, Dict, NewHeight),
     %Match1 is orders that are still open.
     %Match2 is orders that are already closed. We need to pay them their winnings.
 		F8 = (NewHeight > forks:get(8)),
@@ -160,14 +180,14 @@ go2(Tx, Dict, NewHeight) -> %doit is split into two pieces because when we close
 			 true -> Matches2;
 			 false -> Matches1%
 		     end,%
-		Dict3 = dict_give_bets_main(From, M3, TxType, Dict2, Oracle#oracle.id, NewHeight),
-                Dict4 = dict_give_bets(Matches2, OracleType, Dict3, Oracle#oracle.id, NewHeight),%gives oracle_bets to each account that got matched
+		Dict3 = dict_give_bets_main(From, M3, TxType, Dict2, Oracle#oracle.id, NewHeight),%gives matched to the person betting
+                Dict4 = dict_give_bets(Matches2, OracleType, Dict3, Oracle#oracle.id, NewHeight),%gives matched to each account that got matched
                 Oracle3 = case Next of
                               same -> 
-                                  io:fwrite("oracle_bet_tx same type\n"),
+                                  %io:fwrite("oracle_bet_tx same type\n"),
                                   Oracle;
                               switch ->
-                                  io:fwrite("oracle_bet_tx switch types\n"),
+                                  %io:fwrite("oracle_bet_tx switch types\n"),
                                   Oracle#oracle{done_timer = NewHeight + MOT, type = TxType}
                           end,
                 oracles:dict_write(Oracle3, Dict4)

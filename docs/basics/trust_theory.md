@@ -15,7 +15,9 @@ From strongest security to weakest, the spectrum of trust:
 1) provably secure cryptographic protocols. An attacker willing to spend any amount of money can't meaningfully interupt the mechanism or take anyone's money.
 * hash algorithms
 * public private key cryptography
+[learn more about security level 1 here](trust_theory_1.1.md)
 2) mechanisms where any attacker willing to spend A of their own money can destroy B value of someone else's. where A > B.
+[learn more about security level 2 here](trust_theory_2.2.md)
 3) same as (2) but 0 =< A =< B.
 * if a blockchain mechanism has this kind of level of trust, it is usually considered a bug that needs to be patched. These are griefing attacks https://consensys.github.io/smart-contract-best-practices/known_attacks/#insufficient-gas-griefing
 4) same as (3), but A < 0.
@@ -40,7 +42,7 @@ If you combine 2 mechanisms with different levels of trust together, you take th
 
 
 In the context of blockchains, people start using words like "cryptoeconomically secure" or "trust free", but which levels of trust does that really mean?
-In Amoveo, we try to keep every aspect of the blockchains and channels at level 1.1. We do not exceed trust level 1.1, to the best of my knowledge.
+In Amoveo, we try to keep every aspect of the blockchains and channels at level 2.1. We do not exceed trust level 2.1, to the best of my knowledge.
 
 I think if the second digit should be called the "unsealed trust level" or "sincere trust", because the latin roots of "sincere" are "without" and "seal".
 They are similar to an unsealed bottle, in that you can't know if someone has tampered with it.
@@ -50,14 +52,18 @@ The first digit can be the "sealed trust", or "insincere trust".
 4.X are significantly worse than the rest in that the attacker can profit from attacking.
 A mechanism of level 4 will inevitably be destroyed.
 
-Every level of trust besides 1.1 suffer from the credible commitment to attack problem. That is where someone very rich makes a believable commitment to destroying the mechanism. If the community believes that it will get destroyed, then they will abandon the mechanism, so the rich person doesn't actually have to pay for the attack.
-If you don't have any rich enemy, then that might not be an issue for your protocol, so level 2.2 might be a reasonable level of trust.
-There are many mechanisms out there of level 2.2 that are considered secure.
+Every level of trust less secure than 2.2 suffer from the credible commitment to attack problem. That is where someone very rich makes a believable commitment to destroying the mechanism. If the community believes that it will get destroyed, then they will abandon the mechanism, so the rich person doesn't actually have to pay for the attack.
+At level 1.1, it is not possible to make a credible commitment to destroy the mechanism, because the mechanism cannot be destroyed.
+At level 2.2, it is possible to credibly commit to destroying the mechanism, but the existing participants do not abandon the mechanism, because they can make enough profit during the attack that they would prefer for the attack to happen.
 
 
-The cost of using a mechanism often increases with the level of trust.
-at level 1.1, verifying a signature over a binary is a purely cryptographic algorithm. It costs nothing to do this, it is free.
-at level 4.4, you are deposting your money into a centrally controlled service, and hoping that the fees you pay are enough to convince them not to steal any of your money.
+The cost of using a mechanism increases with the level of trust.
+* At level 1.1, verifying a signature over a binary is a purely cryptographic algorithm. It costs nothing to do this, it is free.
+* At level 2.1/2.2 there are miners or some other parties who we need to pay fees to in order to use the protocol. The miners can't rob us, so the payment is just to give you a good spot in line. It isn't for security.
+* At level 3.1/3.2 we are still paying for a spot in line, but we are also paying for some security. There could be some occational retirement attacks that happen because competitor blockchain is bribing people on our blockchain to make it happen. The higher of a fee you pay, the less frequently these attacks will occur.
+* Level 3.3 is similar to 3.2, except without any reputation system. So paying a higher fee wont make you any safer.
+* at level 4.1/4.2, you are deposting your money into a centrally controlled service, and hoping that the fees you pay are enough to convince them not to steal any of your money.
+* At level 4.4 your money can get stolen, and you don't know who did it. You can't tell if the system is working correctly and you are unlucky, or if you got robbed. This is a 100% trustful system.
 
 
 More trust = less security. More trust = higher fees.
@@ -68,21 +74,12 @@ This is why we should create a general theory of trust, so that we can quickly c
 Not only is this useful for mechanism designers, it is useful for investors as well.
 If an investor can calculate that a mechanism is not using the lowest level of trust possible, then the investor can know that this project will be more expensive and less secure than the competition.
 
-open problems
-======
-
-
-in total, there are 10 levels of trust identified here. If you can make a general proof that mechanism with trust 3.2 can always be improved to be 2.2, that would be a great discovery.
-
-If you can prove that any mechanism can be written in a 1.1 form, or at least give a broad range of mechanisms that can be in 1.1 form, that would be great.
-
-
 
 
 Applying these tools to existing projects
 =======
 
-Bitcoin hivemind and Augur are 3.1
+Bitcoin hivemind and Augur are 3.2
 The oracle participants can lie to cheat in a market, but they lose more money than they earn from the markets.
 
 

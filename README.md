@@ -36,6 +36,10 @@ Amoveo main net was launched at 11:00 AM GMT on March 2, 2018.
 [Statistics page to see historic difficulty, blocktime, hashrate, and more.](https://jimhsu.github.io/amoveo-stats/)
 --->
 
+## Smart contracts
+
+[here is documentation](docs/light_node/p2p_derivatives.md) for how to make bets on any topic using Amoveo.
+
 
 ## Light node
 
@@ -96,7 +100,7 @@ Commands such as:
 
 [here is another closed source miner](https://github.com/krypdkat/AmoveoMinerMan)
 
-[here is a miner for fpga](https://github.com/dedmarozz/Amoveo-VCU1525-FPGA-Miner/releases)
+[here is miners for 5 different kinds of fpga](https://github.com/dedmarozz)
 
 [Comino appears to be selling some fpga software to mine veo](https://comino.com/shop)
 
@@ -107,11 +111,11 @@ Full node keys are stored in `_build/prod/rel/amoveo_core/keys/keys.db`
 
 ## Mining Pools
 
-http://159.65.120.84:8085/main.html (maintained by Zack, who wrote the Amoveo full node.)
+http://stats.veopool.pw/
 
 https://amoveopool.com/#getting-started
 
-http://stats.veopool.pw/
+http://veo.lolopool.com/
 
 
 ## Trading

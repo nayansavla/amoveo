@@ -212,14 +212,14 @@ bet_unlock3(Data5, T, B, A, Bet, SSIn, SSOut, SS2, Secrets, Nonce, SSThem) ->
     [<<ContractAmount0:32>>, <<Nonce2:32>>, <<Delay:32>>|_] = chalang:stack(Data5),
    if
         Delay > 0 ->
-	   io:fwrite("delay is "),
-	   io:fwrite(integer_to_list(Delay)),
-	   io:fwrite(". Delay >0, keep the bet.\n"),
-	   io:fwrite("nonce .\n"),
-	   io:fwrite(integer_to_list(Nonce2)),
-	   io:fwrite("amount .\n"),
-	   io:fwrite(integer_to_list(ContractAmount0)),
-	   io:fwrite("\n"),
+	   %io:fwrite("delay is "),
+	   %io:fwrite(integer_to_list(Delay)),
+	   %io:fwrite(". Delay >0, keep the bet.\n"),
+	   %io:fwrite("nonce .\n"),
+	   %io:fwrite(integer_to_list(Nonce2)),
+	   %io:fwrite("amount .\n"),
+	   %io:fwrite(integer_to_list(ContractAmount0)),
+	   %io:fwrite("\n"),
 	   bet_unlock2(T, [Bet|B], A, SSIn, [SS2|SSOut], Secrets, Nonce, [SS2|SSThem]);
        true -> 
 	   CGran = constants:channel_granularity(),
@@ -342,7 +342,7 @@ run3(SS, Bet, OpGas, RamGas, Funs, Vars, State) ->
     F = prove_facts(SS#ss.prove, Trees),
     C = Bet#bet.code,
     Code = <<F/binary, C/binary>>,  
-    Data = chalang:data_maker(OpGas, RamGas, Vars, Funs, ScriptSig, Code, State, constants:hash_size()),
+    Data = chalang:data_maker(OpGas, RamGas, Vars, Funs, ScriptSig, Code, State, constants:hash_size(), false),
     {Amount0, Nonce, Delay, Data2} = chalang_error_handling(ScriptSig, Code, Data),
     CGran = constants:channel_granularity(),
     
@@ -506,12 +506,12 @@ obligations(2, [A|T]) ->
 	    true -> 0
 	end,
     C + obligations(2, T).
-vm(SS, State) ->
-    {ok, TimeLimit} = application:get_env(amoveo_core, time_limit),
-    {ok, SpaceLimit} = application:get_env(amoveo_core, space_limit),
-    {ok, FunLimit} = application:get_env(amoveo_core, fun_limit),
-    {ok, VarLimit} = application:get_env(amoveo_core, var_limit),
-    chalang:vm(SS, TimeLimit, SpaceLimit, FunLimit, VarLimit, State).
+%vm(SS, State) ->
+%    {ok, TimeLimit} = application:get_env(amoveo_core, time_limit),
+%    {ok, SpaceLimit} = application:get_env(amoveo_core, space_limit),
+%    {ok, FunLimit} = application:get_env(amoveo_core, fun_limit),
+%    {ok, VarLimit} = application:get_env(amoveo_core, var_limit),
+%    chalang:vm(SS, TimeLimit, SpaceLimit, FunLimit, VarLimit, State).
 -define(error_amount, 0).
 -define(error_delay, 10000000).
 -define(error_nonce, 0).

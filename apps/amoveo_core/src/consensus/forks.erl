@@ -20,4 +20,9 @@ get(8) -> common(36120, test_height());
 get(9) -> common(39500, test_height());
 get(10) -> common(47043, 1);
 get(11) -> common(58650, test_height());
-get(12) -> common(39000, test_height()).
+get(12) -> common(39000, test_height());
+get(13) -> common(61300, test_height());
+get(14) -> common(62400, max(test_height(), 1));
+get(15) -> common(63300, test_height());
+get(16) -> common(63301, test_height());
+get(17) -> common(66775, test_height()).

@@ -56,8 +56,12 @@ tx_maker0(Tx) ->
 	    end
     end.
 create_account(NewAddr, Amount) ->
-    Cost = trees:get(governance, create_acc_tx),
-    create_account(NewAddr, Amount, ?Fee + Cost).
+    case keys:status() of
+        locked -> {error, "need to decrypt private key"};
+        unlocked ->
+            Cost = trees:get(governance, create_acc_tx),
+            create_account(NewAddr, Amount, ?Fee + Cost)
+    end.
 create_account(NewAddr, Amount, Fee) when size(NewAddr) == 65 ->
     Tx = create_account_tx:make_dict(NewAddr, Amount, Fee, keys:pubkey()),
     tx_maker0(Tx);
@@ -113,7 +117,11 @@ spend(ID0, Amount) ->
     end.
 spend(ID0, Amount, Fee) ->
     ID = decode_pubkey(ID0),
-    tx_maker0(spend_tx:make_dict(ID, Amount, Fee, keys:pubkey())).
+    case keys:status() of
+        locked -> {error, "need to decrypt private key"};
+        unlocked ->
+            tx_maker0(spend_tx:make_dict(ID, Amount, Fee, keys:pubkey()))
+    end.
 delete_account(ID0) ->
     ID = decode_pubkey(ID0),
     Cost = trees:get(governance, delete_acc_tx),
@@ -370,6 +378,35 @@ oracle_bet(OID, Type, Amount) ->
     oracle_bet(?Fee+Cost, OID, Type, Amount).
 oracle_bet(Fee, OID, Type, Amount) ->
     tx_maker0(oracle_bet_tx:make_dict(keys:pubkey(), Fee, OID, Type, Amount)).
+minimum_scalar_oracle_bet(OID, N) ->
+    true = is_integer(N),
+    true = (N > -1),
+    true = (N < 1024),
+    Amount = trees:get(governance, oracle_question_liquidity) + 1,
+    Bits = lists:reverse(to_bits(N, 10)),
+    <<OIDN:256>> = OID,
+    msob2(OIDN, Amount, 0, Bits).
+scalar_oracle_close(OID) ->
+    <<OIDN:256>> = OID,
+    scalar_oracle_close2(OIDN, 10).
+scalar_oracle_close2(_, 0) -> ok;
+scalar_oracle_close2(OIDN, N) ->
+    oracle_close(<<OIDN:256>>),
+    scalar_oracle_close2(OIDN+1, N-1).
+msob2(_, _, _, []) -> ok;
+msob2(OIDN, Amount, N, [H|T]) ->
+    spawn(fun() ->
+                  oracle_bet(<<(OIDN + N):256>>, H, Amount)
+          end),
+    timer:sleep(200),
+    msob2(OIDN, Amount, N+1, T).
+to_bits(_, 0) -> [];
+to_bits(X, N) when (0 == (X rem 2)) ->
+    [2|to_bits(X div 2, N-1)];
+to_bits(X, N) ->
+    Y = (X - 1) div 2,
+    [1|to_bits(Y, N-1)].
+    
 oracle_close(OID) ->
     Trees = (tx_pool:get())#tx_pool.block_trees,
     Dict = (tx_pool:get())#tx_pool.dict,
@@ -382,36 +419,66 @@ oracle_winnings(OID) ->
     oracle_winnings(?Fee+Cost, OID).
 oracle_winnings(Fee, OID) ->
     tx_maker0(oracle_winnings_tx:make_dict(keys:pubkey(), Fee, OID)).
+scalar_oracle_winnings(OID) -> 
+    Cost = trees:get(governance, oracle_winnings),
+    scalar_oracle_winnings(?Fee+Cost, OID).
+scalar_oracle_winnings(Fee, OID) -> %for scalar oracles
+    <<OIDN:256>> = OID,
+    scalar_oracle_winnings(Fee, OIDN, 10).
+scalar_oracle_winnings(_, _, 0) -> 0;
+scalar_oracle_winnings(Fee, OIDN, N) ->
+    oracle_winnings(Fee, <<OIDN:256>>),
+    scalar_oracle_winnings(Fee, OIDN + 1, N - 1).
 oracle_unmatched(OracleID) ->
     Cost = trees:get(governance, unmatched),
     oracle_unmatched(?Fee+Cost, OracleID).
 oracle_unmatched(Fee, OracleID) ->
     tx_maker0(oracle_unmatched_tx:make_dict(keys:pubkey(), Fee, OracleID)).
+scalar_oracle_unmatched(OID) -> 
+    Cost = trees:get(governance, unmatched),
+    scalar_oracle_unmatched(?Fee+Cost, OID).
+scalar_oracle_unmatched(Fee, OID) -> %for scalar oracles
+    <<OIDN:256>> = OID,
+    scalar_oracle_unmatched(Fee, OIDN, 10).
+scalar_oracle_unmatched(_, _, 0) -> 0;
+scalar_oracle_unmatched(Fee, OIDN, N) ->
+    oracle_unmatched(Fee, <<OIDN:256>>),
+    scalar_oracle_unmatched(Fee, OIDN + 1, N - 1).
+tree_common(TreeName, ID) ->
+    X = trees:get(TreeName, ID),
+    case X of
+        empty -> 0;
+        _ -> X
+    end.
 tree_common(TreeName, ID, BlockHash) ->
     B = block:get_by_hash(BlockHash),
     %T = block:trees(B),
     T = B#block.trees,
-    trees:get(TreeName, ID, dict:new(), T).
+    X = trees:get(TreeName, ID, dict:new(), T),
+    case X of
+        empty -> 0;
+        _ -> X
+    end.
     
 governance(ID) ->
-    trees:get(governance, ID).
+    tree_common(governance, ID).
 governance(ID, BlockHash) ->
     tree_common(governance, ID, BlockHash).
 channel(ID) ->
-    trees:get(channels, ID).
+    tree_common(channels, ID).
 channel(ID, BlockHash) ->
     tree_common(channel, ID, BlockHash).
 existence(ID) ->
-    trees:get(existence, ID).
+    tree_common(existence, ID).
 existence(ID, BlockHash) ->
     tree_common(existence, ID, BlockHash).
 oracle(ID) ->
-    trees:get(oracles, ID).
+    tree_common(oracles, ID).
 oracle(ID, BlockHash) ->
     tree_common(oracle, ID, BlockHash).
 account(P) ->
     Pubkey = decode_pubkey(P),
-    trees:get(accounts, Pubkey).
+    tree_common(accounts, Pubkey).
 account(P, BlockHash) ->
     Pubkey = decode_pubkey(P),
     tree_common(oracle, Pubkey, BlockHash).
@@ -443,9 +510,21 @@ balance() -> integer_balance().
 mempool() -> lists:reverse((tx_pool:get())#tx_pool.txs).
 halt() -> off().
 off() ->
+    sync:stop(),
+    timer:sleep(1000),
     testnet_sup:stop(),
     ok = application:stop(amoveo_core),
     ok = application:stop(amoveo_http).
+test_mine_blocks(S) ->
+    spawn(fun() -> test_mine_blocks2(S) end).
+test_mine_blocks2(S) ->
+    mine_block(),
+    timer:sleep(S*1000),
+    case sync_mode:check() of
+        normal ->
+            test_mine_blocks(S);
+        _ -> ok
+    end.
 mine_block() ->
     block:mine(10000000).
     %potential_block:save(),
@@ -513,6 +592,7 @@ add_peer(IP, Port) ->
     peers:add({IP, Port}),
     0.
 %sync() -> sync(?IP, ?Port).
+%curl -d '["sync", 2, [x,x,x,x], 8080]' localhost:8081
 sync() -> 
     spawn(fun() -> sync:start() end),
     0.
@@ -707,6 +787,18 @@ orders(OID) ->
     lists:map(fun(Y) -> orders:get(Y, X) end, IDs).
 oracles() ->
     oracles:all().
+channels_from(Address) ->
+    CA = channels:all(),
+    channels_from2(CA, Address).
+channels_from2([], _) -> [];
+channels_from2([X|T], Address) ->
+    B1 =  element(3, X) == base64:decode(Address),
+    B2 =  element(4, X) == base64:decode(Address),
+    if
+        (B1 or B2) -> [X|channels_from2(T, Address)];
+        true -> channels_from2(T, Address)
+    end.
+    
 		      
 
 sync_normal() ->
@@ -725,4 +817,13 @@ pubkey(Pubkey, Many, TopHeight) ->
     amoveo_utils:address_history(quiet, Pubkey, Many, TopHeight).
 %curl -i -d '["pubkey", "BEwcawKx5oZFOmp1533TqDzUl76fOeLosDl+hwv6rZ50tLSQmMyW/87saj3D5qBtJI4lLsILllpRlT8/ppuNaPM=", 100, 18000]' http://localhost:8081
 
+atomic_payment(To, Commit, Amount) ->
+    %we can use this api call without syncing the blockchain.
 
+    ok.%returns new_channel offer
+    
+atomic_receive(NC, Secret, Amount) ->
+    %verify the new_channel offer has the correct commit in it, and that it is sending the correct amount.
+    %They put 21 in the contract, we put 1. If we fail to reveal the secret, it all goes to them after a delay of like 1 day.
+    %if we do reveal the secret, then we get a contract for stable bitcoin. revealing the secret also allows them to unlock the bitcoin we sent them.
+    ok.%if it succeeds, it publishes the new_channel tx, and once we have a confirmation, it uses the secret to update our channel state with our partner

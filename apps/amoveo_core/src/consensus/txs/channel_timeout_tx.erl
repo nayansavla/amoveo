@@ -45,7 +45,10 @@ go(Tx, Dict, NewHeight, _) ->
     CID = Tx#timeout.cid,
     Channel = channels:dict_get(CID, Dict),
     F12 = forks:get(12),
+    F16 = forks:get(16),
     if
+        ((NewHeight > 62233) and (NewHeight < F16)) ->
+            1=2;%this can be deleted once fork 16 activates.
         NewHeight > F12 ->
             true = channels:nonce(Channel) > 1;
         true -> ok
@@ -77,4 +80,11 @@ go(Tx, Dict, NewHeight, _) ->
     %Slasher = channels:slasher(Channel),
     Acc4 = accounts:dict_update(From, Dict3, -Fee, none),
     Dict4 = accounts:dict_write(Acc4, Dict3),
-    channels:dict_delete(CID, Dict4).
+    F17 = forks:get(17),
+    if 
+        NewHeight > F17 -> 
+            NewChannel = channels:dict_update(CID, Dict4, none, 0, 0, 0, 0, NewHeight, true),
+            channels:dict_write(NewChannel, Dict4);
+        true ->
+            channels:dict_delete(CID, Dict4)
+    end.

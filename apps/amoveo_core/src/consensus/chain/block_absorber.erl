@@ -4,7 +4,7 @@
 -export([recover/1,
 	 check/0,
 	 save/1,    %% returns after saving
-	 do_save/1]). %% run without gen_server
+	 do_save/2]). %% run without gen_server
 -export([start_link/0,init/1,handle_call/3,handle_cast/2,handle_info/2,terminate/2,code_change/3]).
 init(ok) -> {ok, now()}.
 start_link() -> gen_server:start_link({local, ?MODULE}, ?MODULE, ok, []).
@@ -26,7 +26,7 @@ save([]) -> ok;
 save([T]) -> save(T);
 save([B|T]) -> save(B), save(T);
 save(X) -> 
-    %io:fwrite("block absorber \n"),
+    %io:fwrite("block_absorber:save \n"),
     case sync:status() of
 	go ->
 	    gen_server:call(?MODULE, {doit, X}, 10000);
@@ -44,11 +44,11 @@ absorb_internal(Block) ->
     %io:fwrite("\n"), 
     if
 	Height > (MyHeight + 1) ->
-	    io:fwrite("too high"),
-            1=2;
+	    %io:fwrite("too high"),
+            0;
 	Height < (MyHeight - 300) ->
-	    io:fwrite("too low"),
-            1=2;
+	    %io:fwrite("too low"),
+            0;
 	true ->
 	    {_, _, BH} = Block#block.trees,
 	    %io:fwrite("block absorber 1\n"),
@@ -90,7 +90,7 @@ absorb_internal(Block) ->
 		    %io:fwrite("\n"),
 		    %0.3 0.09 0.1 0.08
 		    %headers:absorb([H]),
-		    %io:fwrite("block absorber 2\n"),
+                    %io:fwrite("block absorber 2\n"),
 		    %io:fwrite(packer:pack(erlang:timestamp())),
 		    %io:fwrite("\n"),
 		    {true, Block2} = block:check(Block),%writing new block's data into the consensus state merkle trees.
@@ -98,7 +98,7 @@ absorb_internal(Block) ->
 		    %io:fwrite("block absorber 3\n"),
 		    %io:fwrite(packer:pack(erlang:timestamp())),
 		    %io:fwrite("\n"),
-		    do_save(Block2),%0.02
+		    do_save(Block2, BH),%0.02
 		    %io:fwrite("block absorber 4\n"),
 		    %io:fwrite(packer:pack(erlang:timestamp())),
 		    %io:fwrite("\n"),
@@ -137,7 +137,9 @@ absorb_internal(Block) ->
 			    order_book:match();
 			    %sync:push_new_block(Block2);
 			quick -> 
-			    recent_blocks:add(BH, Header#header.accumulative_difficulty, Height),%garbage collection
+                            spawn(fun() ->
+                                          recent_blocks:add(BH, Header#header.accumulative_difficulty, Height)%garbage collection
+                                  end),
 			    %0.45 0.4 0.3
 			    %io:fwrite("block absorber 6\n"),
 			    %io:fwrite(packer:pack(erlang:timestamp())),
@@ -152,7 +154,7 @@ absorb_internal(Block) ->
 		    %io:fwrite(packer:pack(erlang:timestamp())),
 		    %io:fwrite("\n"),
 		    if
-			(Block2#block.height rem 10) == 0 ->
+			(Block2#block.height rem 100) == 0 ->
 			%1 == 1 ->
 			    io:fwrite("absorb block "),
 			    io:fwrite(integer_to_list(Block2#block.height)),
@@ -162,23 +164,19 @@ absorb_internal(Block) ->
 		    Header
 	    end
     end.
-do_save(BlockPlus) ->
+do_save(BlockPlus, BH) ->
     %found_block_timer:add(),%put it into headers instead.
-    CompressedBlockPlus = zlib:compress(term_to_binary(BlockPlus)),
-    Hash = block:hash(BlockPlus),
-    BlockFile = amoveo_utils:binary_to_file_path(blocks, Hash),
-    %io:fwrite("deleting blockfile "),
-    %io:fwrite(BlockFile),
-    %io:fwrite("\n"),
-    %file:delete(BlockFile),
-    %timer:sleep(100),
-    ok = db:save(BlockFile, CompressedBlockPlus).
+    block_db:write(BlockPlus, BH).
+%CompressedBlockPlus = zlib:compress(term_to_binary(BlockPlus)),
+%    Hash = block:hash(BlockPlus),
+%    BlockFile = amoveo_utils:binary_to_file_path(blocks, Hash),
+%    ok = db:save(BlockFile, CompressedBlockPlus).
 highest_block([H|T]) ->
-    B = binary_to_term(zlib:uncompress(db:read(constants:blocks_file()++H))),
+    B = block:get_by_hash(H),
     highest_block(B, T).
 highest_block(B, []) -> B;
 highest_block(B, [H|T]) ->
-    B2 = binary_to_term(zlib:uncompress(db:read(constants:blocks_file()++H))),
+    B2 = block:get_by_hash(H),
     H1 = B#block.height,
     H2 = B2#block.height,
     if
@@ -199,7 +197,9 @@ recover(Mode) ->
 		full ->
 		    highest_block(BlockFiles);
 		quick ->
-		    Block1 = binary_to_term(zlib:uncompress(db:read(constants:blocks_file()++hd(BlockFiles)))),
+		    %Block1 = binary_to_term(zlib:uncompress(db:read(constants:blocks_file()++hd(BlockFiles)))),
+                    Block1 = block:get_by_hash(hd(BlockFiles)),
+		    %Block1 = binary_to_term(zlib:uncompress(db:read(amoveo_utils:binary_to_file_path(blocks, hd(BlockFiles))))),
 		    L = length(BlockFiles),
 		    FirstTen = if
 				   L > 50 ->

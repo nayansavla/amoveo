@@ -9,6 +9,7 @@
 	 period_estimate/1, hashrate_estimate/1,
 	 hashes_per_block/0, hashes_per_block/1,
          header_by_height/1,
+         prev_hash/2,
          test/0]).
 %Read about why there are so many proofs in each block in docs/design/light_nodes.md
 -include("../../records.hrl").
@@ -86,20 +87,31 @@ calculate_prev_hashes(Parent) ->
 
 calculate_prev_hashes([PH|Hashes], Height, N) ->
     NHeight = Height - N,
-    case NHeight < 1 of
+    {ok, DBV} = application:get_env(amoveo_core, db_version),
+    RH = if
+             DBV > 1 -> block_db:ram_height();
+             true -> 1
+         end,
+    case NHeight < RH of
+%    case NHeight < 1 of
         true ->
             list_to_tuple([prev_hashes|lists:reverse([PH|Hashes])]);
         false ->
             B = get_by_height_in_chain(NHeight, PH),
             calculate_prev_hashes([hash(B)|[PH|Hashes]], NHeight, N*2)
     end.
-get_by_hash(H) ->
+get_by_hash(H) -> 
     Hash = hash(H),
-    BlockFile = amoveo_utils:binary_to_file_path(blocks, Hash),
-    case db:read(BlockFile) of
-        [] -> empty;
-        Block -> binary_to_term(zlib:uncompress(Block))
+    case block_db:read(Hash) of
+        error -> empty;
+        X -> X
     end.
+            
+%    BlockFile = amoveo_utils:binary_to_file_path(blocks, Hash),
+%    case db:read(BlockFile) of
+%        [] -> empty;
+%        Block -> binary_to_term(zlib:uncompress(Block))
+%    end.
 top() -> top(headers:top_with_block()).%what we actually want is the highest header for which we have a stored block.
 top(Header) ->
     false = element(2, Header) == undefined,
@@ -131,24 +143,41 @@ header_by_height_in_chain(N, Hash) when N > -1 ->
     end.
     
 get_by_height(N) ->
-    get_by_height_in_chain(N, headers:top_with_block()).
+    {ok, DBV} = application:get_env(amoveo_core, db_version),
+    if
+        ((N == 0) and (DBV > 1)) -> block_db:genesis();
+        true ->
+            get_by_height_in_chain(N, headers:top_with_block())
+    end.
+    %get_by_height_in_chain(N, headers:top_with_block()).
 get_by_height_in_chain(N, BH) when N > -1 ->
-    Block = get_by_hash(hash(BH)),
-    case Block of
-        empty ->
-            PrevHash = BH#header.prev_hash,
-            {ok, PrevHeader} = headers:read(PrevHash),
-            get_by_height_in_chain(N, PrevHeader);
-        _  ->
-            M = Block#block.height,
-            D = M - N,
-            if
-                D < 0 -> empty;
-                D == 0 -> Block;
-                true ->
-                    PrevHash = prev_hash(lg(D), Block),
+    %if we are using the new database, and the block is more than fork_tolerance in history, then we should use the new way of looking up blocks by height.
+    HN = block:height(),
+    %{ok, FT} = application:get_env(amoveo_core, fork_tolerance),
+    RH = block_db:ram_height(),
+    {ok, DBV} = application:get_env(amoveo_core, db_version),
+    if 
+        ((N == 0) and (DBV > 1)) -> block_db:genesis();
+        ((DBV > 1) and (N < RH)) -> block_db:by_height_from_compressed(block_db:read_by_height(N), N);
+        true ->
+            Block = get_by_hash(hash(BH)),
+    %io:fwrite(packer:pack(Block)),
+            case Block of
+                empty ->
+                    PrevHash = BH#header.prev_hash,
                     {ok, PrevHeader} = headers:read(PrevHash),
-                    get_by_height_in_chain(N, PrevHeader)
+                    get_by_height_in_chain(N, PrevHeader);
+                _  ->
+                    M = Block#block.height,
+                    D = M - N,
+                    if
+                        D < 0 -> empty;
+                        D == 0 -> Block;
+                        true ->
+                            PrevHash = prev_hash(lg(D), Block),
+                            {ok, PrevHeader} = headers:read(PrevHash),
+                            get_by_height_in_chain(N, PrevHeader)
+                    end
             end
     end.
 prev_hash(0, BP) -> BP#block.prev_hash;
@@ -201,11 +230,11 @@ market_cap(OldBlock, BlockReward, Txs0, Dict, Height) ->
 	FH > Height ->
 	    OldBlock#block.market_cap + 
 		BlockReward - 
-		gov_fees(Txs0, Dict);
+		gov_fees(Txs0, Dict, Height);
 	Height == FH -> %
 	    MC1 = OldBlock#block.market_cap + %
 		BlockReward - %
-		gov_fees(Txs0, Dict),%
+		gov_fees(Txs0, Dict, Height),%
 	    (MC1 * 6) div 5;%
 	FH < Height ->%
 	    DeveloperRewardVar = %
@@ -216,7 +245,7 @@ market_cap(OldBlock, BlockReward, Txs0, Dict, Height) ->
 		10000,%
 	    OldBlock#block.market_cap + %
 		BlockReward - %
-		gov_fees(Txs0, Dict) + %
+		gov_fees(Txs0, Dict, Height) + %
 		DeveloperReward%
     end.
     
@@ -249,7 +278,7 @@ make(Header, Txs0, Trees, Pub) ->
 		       MinerAccount = accounts:dict_update(MinerAddress, NewDict, MinerReward, none),%
 		       accounts:dict_write(MinerAccount, NewDict);%
 		   true ->
-		       GovFees = gov_fees(Txs0, NewDict),
+		       GovFees = gov_fees(Txs0, NewDict, Height),
 		       MinerAccount2 = accounts:dict_update(MinerAddress, NewDict, MinerReward - GovFees, none),
 		       accounts:dict_write(MinerAccount2, NewDict)
 	       end,
@@ -435,7 +464,7 @@ proofs_roots_match([P|T], R) when is_record(R, roots2)->
 check0(Block) ->%This verifies the txs in ram. is parallelizable
     Facts = Block#block.proofs,
     Header = block_to_header(Block),
-    BlockHash = hash(Block),
+    BlockHash = hash(Header),
     {ok, Header} = headers:read(BlockHash),
     Roots = Block#block.roots,
     PrevStateHash = roots_hash(Roots),
@@ -518,12 +547,18 @@ check(Block) ->%This writes the result onto the hard drive database. This is non
 		       MinerAccount = accounts:dict_update(MinerAddress, NewDict2, MinerReward, none),
 		       accounts:dict_write(MinerAccount, NewDict2);
 		   true ->
-		       GovFees = gov_fees(Txs0, NewDict2),
+		       GovFees = gov_fees(Txs0, NewDict2, Height),
 		       MinerAccount2 = accounts:dict_update(MinerAddress, NewDict2, MinerReward - GovFees, none),
 		       accounts:dict_write(MinerAccount2, NewDict2)
 	       end,
-
-    NewTrees3_0 = tree_data:dict_update_trie(OldTrees, NewDict3),
+    F8 = forks:get(8),
+    if
+        Height > F8 ->
+            no_counterfeit(Dict, NewDict3, Txs0, Height);
+        true -> ok
+    end,
+    NewDict4 = remove_repeats(NewDict3, Dict, Height),
+    NewTrees3_0 = tree_data:dict_update_trie(OldTrees, NewDict4),%here
     F10 = forks:get(10),
     NewTrees3 = if
 		    (Height == F10) ->
@@ -536,11 +571,18 @@ check(Block) ->%This writes the result onto the hard drive database. This is non
 				      trees:governance(NewTrees3_0),
 				      Root0,
 				      Root0),
-		       %at this point we should move all the oracle bets and orders into their new merkel trees.
 		       NewTrees1;
 		   true -> NewTrees3_0
 	       end,
-    Block2 = Block#block{trees = NewTrees3},
+
+    {ok, PrevHeader} = headers:read(Header#header.prev_hash),
+    PrevHashes2 = case Block#block.prev_hashes of
+                      0 -> calculate_prev_hashes(PrevHeader);
+                      X -> X
+                  end,
+    Block2 = Block#block{trees = NewTrees3, prev_hashes = PrevHashes2},
+
+    %Block2 = Block#block{trees = NewTrees3},
     %TreesHash = trees:root_hash(Block2#block.trees),
     %TreesHash = trees:root_hash2(Block2#block.trees, Roots),
     %TreesHash = Header#header.trees_hash,
@@ -609,27 +651,39 @@ initialize_chain() ->
     %only run genesis maker once, or else it corrupts the database.
     %{ok, L} = file:list_dir("blocks"),
     %B = length(L) < 1,
-    B = true,
-    GB = if
-        B -> G = genesis_maker(),
-             block_absorber:do_save(G),
-             G;
-        true -> get_by_height(0)
-         end,
+    B = (element(2, headers:top_with_block()) == 0),
+    %B = true,
+    {GB, Bool} = if
+                     B -> G = genesis_maker(),
+                          %block_absorber:do_save(G, GH),
+                          {G, true};
+                     true -> {get_by_height(0), false}
+                 end,
     Header0 = block_to_header(GB),
-    gen_server:call(headers, {add, block:hash(Header0), Header0, 1}),
+    GH = block:hash(Header0),
+    if
+        Bool -> block_absorber:do_save(GB, GH);
+        true -> ok
+    end,
+    gen_server:call(headers, {add, GH, Header0, 1}),
     gen_server:call(headers, {add_with_block, block:hash(Header0), Header0}),
     Header0.
 
-gov_fees([], _) -> 0;
-gov_fees([Tx|T], Dict) ->
+gov_fees([], _, _) -> 0;
+gov_fees([Tx|T], Dict, Height) ->
     C = testnet_sign:data(Tx),
     Type = element(1, C),
     A = case Type of
 	    multi_tx -> gov_fees2(C#multi_tx.txs, Dict);
-	    _ -> governance:dict_get_value(Type, Dict)
+	    _ -> 
+                X = governance:dict_get_value(Type, Dict),
+                F16 = forks:get(16),
+                if
+                    ((Type == timeout) and (Height > F16)) -> -X;
+                    true -> X
+                end
 	end,
-    A + gov_fees(T, Dict).
+    A + gov_fees(T, Dict, Height).
 gov_fees2([], _) -> 0;
 gov_fees2([H|T], Dict) ->
     Type = element(1, H),
@@ -641,10 +695,17 @@ deltaCV([Tx|T], Dict) ->
     C = testnet_sign:data(Tx),
     A = case element(1, C) of
 	    nc -> new_channel_tx:bal1(C) + new_channel_tx:bal2(C);
+	    ctc2 -> 
+		ID = channel_team_close_tx:id(C),
+		OldChannel = channels:dict_get(ID, Dict),
+		%io:fwrite(packer:pack(OldChannel)),
+		Bal1 = channels:bal1(OldChannel),
+		Bal2 = channels:bal2(OldChannel),
+		-(Bal1 + Bal2);
 	    ctc -> 
 		ID = channel_team_close_tx:id(C),
 		OldChannel = channels:dict_get(ID, Dict),
-		io:fwrite(packer:pack(OldChannel)),
+		%io:fwrite(packer:pack(OldChannel)),
 		Bal1 = channels:bal1(OldChannel),
 		Bal2 = channels:bal2(OldChannel),
 		-(Bal1 + Bal2);
@@ -663,6 +724,7 @@ many_live_channels([Tx|T]) ->
     A = case element(1, C) of
 	    nc -> 1;
 	    ctc -> -1;
+	    ctc2 -> -1;
 	    timeout -> -1;
 	    _ -> 0
 	end,
@@ -758,6 +820,189 @@ exponent(A, N) when N rem 2 == 0 ->
     exponent(A*A, N div 2);
 exponent(A, N) -> 
     A*exponent(A, N-1).
+
+count(_, [], N) -> N;
+count(Type, [H|T], N) ->
+    Type2 = element(1, element(2, H)),
+    if
+        Type == Type2 -> count(Type, T, N+1);
+        true -> count(Type, T, N)
+    end.
+            
+no_counterfeit(Old, New, Txs, Height) ->
+    %times it was outside expected range.
+   %height 2014; diff is - 34434339
+    %height 2017; diff is  49695764
+    %height 3044; diff is  15869694
+   %height 4133; diff is - 34130307
+    %height 4137; diff is  39695764
+    %height 5141; diff is   5869694
+   %height 15583; diff is  33847882
+   %height 21097; diff is  99847882
+   %height 22692; diff is  12210869
+   %height 22703; diff is  16847882
+   %height 22715; diff is  17847882
+   %height 23047; diff is  99847882
+   %height 24897; diff is  65924643
+  %height 30166; diff is 1 00000000
+   %height 30334; diff is  11051240
+  %height 32271; diff is 1 00000000
+  %height 32528; diff is 3 00000000
+%height 33178; diff is 258 00000000
+%height 34116; diff is 121 00000000
+ %height 34556; diff is 57 99999999
+ %height 34587; diff is 41 09394235
+ %height 34626; diff is -3 92481529
+ %height 34627; diff is 13 91619411
+ %height 34680; diff is 67 16797942
+%height 34681; diff is -17 11257793
+%height 34905; diff is 598 01505175
+
+    
+    OK = dict:fetch_keys(Old),
+    NK = dict:fetch_keys(New),
+    OA = sum_amounts(OK, Old, Old),
+    NA = sum_amounts(NK, New, Old),
+    BR = governance:dict_get_value(block_reward, Old),
+    %io:fwrite("block reward "),
+    %io:fwrite(integer_to_list(BR)),
+    %io:fwrite("\n"),
+    DR = governance:dict_get_value(developer_reward, Old),
+    %io:fwrite("block reward "),
+    %io:fwrite(integer_to_list(BR + (BR * DR div 10000))),
+    BlockReward = BR + (BR * DR div 10000),
+    %io:fwrite("; "),
+    CloseOracles = count(oracle_close, Txs, 0),
+    %io:fwrite("close oracles are "),
+    %io:fwrite(integer_to_list(CloseOracles)),
+    %io:fwrite("; "),
+    OIL = governance:dict_get_value(oracle_initial_liquidity, Old),% div 2;
+    OQL = governance:dict_get_value(oracle_question_liquidity, Old),% div 2;
+    OCA = if
+              ((CloseOracles > 0) and (is_integer(OIL)))->
+                  OIL div 2;
+              (CloseOracles > 0) ->
+                  OQL div 2;
+              true -> 0
+          end,
+    Diff = (NA - OA) - (OCA * CloseOracles) - BlockReward,
+    if
+        ((Diff > 0) or (Diff < -50000000))->
+        %false ->
+            io:fwrite("height "),
+            io:fwrite(integer_to_list(Height)),
+            io:fwrite("; diff is "),
+            io:fwrite(integer_to_list(Diff)),
+            io:fwrite("\n"),
+            %io:fwrite(packer:pack([0, NK, OK])),
+            io:fwrite("\n");
+        true -> ok
+    end,
+    true = (Diff =< 0),
+    ok.
+sum_amounts([], _, _) -> 
+    %io:fwrite("sum amount finish\n"),
+    0;
+sum_amounts([{oracles, _}|T], Dict, OldDict) ->
+    sum_amounts(T, Dict, OldDict);
+sum_amounts([{existence, _}|T], Dict, Old) ->
+    sum_amounts(T, Dict, Old);
+sum_amounts([{governance, _}|T], Dict, Old) ->
+    sum_amounts(T, Dict, Old);
+sum_amounts([{Kind, A}|T], Dict, Old) ->
+    X = Kind:dict_get(A, Dict),
+    B = sum_amounts_helper(Kind, X, Dict, Old, A),
+    if
+        false ->
+            io:fwrite("sum amount, type: "),
+            io:fwrite(Kind),
+            io:fwrite(" key: "),
+            io:fwrite(packer:pack(A)),
+            io:fwrite(" "),
+            io:fwrite(integer_to_list(B)),
+            io:fwrite("\n");
+        true -> ok
+    end,
+    B + sum_amounts(T, Dict, Old).
+sum_amounts_helper(_, empty, _, _, _) ->
+    0;
+sum_amounts_helper(accounts, Acc, Dict, _, _) ->
+    Acc#acc.balance;
+sum_amounts_helper(channels, Chan, Dict, _, _) ->
+    channels:bal1(Chan) + 
+        channels:bal2(Chan);
+sum_amounts_helper(oracle_bets, OB, Dict, OldDict, Key) ->%
+    {key, Pub, OID} = Key,%
+    Oracle = oracles:dict_get(OID, OldDict),%
+    R = Oracle#oracle.result,%
+    T = oracle_bets:true(OB),%
+    F = oracle_bets:false(OB),%
+    B = oracle_bets:bad(OB),%
+    N = case R of%
+            0 -> ((T + F + B) div 2);%
+            1 -> T;%
+            2 -> F;%
+            3 -> B%
+        end;%
+sum_amounts_helper(orders, Ord, Dict, _, Key) ->%
+    PS = constants:pubkey_size() * 8,%
+    case Key of%
+        {key, <<1:PS>>, _} -> 0;%
+        _ -> orders:amount(Ord)%
+    end;%
+sum_amounts_helper(unmatched, UM, _Dict, _, Key) ->
+    PS = constants:pubkey_size() * 8,
+    case Key of
+        {key, <<1:PS>>, _} -> 0;
+        _ -> unmatched:amount(UM)
+    end;
+sum_amounts_helper(matched, M, _Dict, OldDict, Key) ->
+    {key, Pub, OID} = Key,
+    Oracle = oracles:dict_get(OID, OldDict),
+    R = Oracle#oracle.result,
+    T = matched:true(M),
+    F = matched:false(M),
+    B = matched:bad(M),
+    %((T+F+B) div 2).
+    N = case R of
+            0 -> ((T+F+B) div 2);
+            1 -> T;
+            2 -> F;
+            3 -> B
+        end.
+remove_repeats(New, Old, Height) ->
+    Keys = dict:fetch_keys(New),
+    F10 = forks:get(10),
+    Old2 = if
+               Height =< F10 -> oracle_bet_order_scanner(dict:fetch_keys(New), New, Old);%check for orders and oracle bets. if there are, then remove them from old
+               true -> Old
+           end,
+    remove_repeats2(New, Old2, Keys).
+oracle_bet_order_scanner([], _, Old) -> Old;
+oracle_bet_order_scanner([{orders, {key, _Pub, OID}}|T], New, Old) ->
+    Old2 = dict:erase({oracles, OID}, Old),
+    oracle_bet_order_scanner(T, New, Old2);
+oracle_bet_order_scanner([{oracle_bets, {key, Pub, _OID}}|T], New, Old) ->
+    Old2 = dict:erase({accounts, Pub}, Old),
+    oracle_bet_order_scanner(T, New, Old2);
+oracle_bet_order_scanner([_|T], New, Old) ->
+    oracle_bet_order_scanner(T, New, Old).
+    
+remove_repeats2(New, _, []) -> New;
+remove_repeats2(New, Old, [H|T]) ->
+    N = dict:fetch(H, New),
+    O = case dict:find(H, Old) of
+            error -> error;
+            {ok, X} -> X
+        end,
+    New2 = if
+               (N == O) -> 
+                   dict:erase(H, New);
+               true  -> 
+                   New
+           end,
+    remove_repeats2(New2, Old, T).
+            
 	    
 test() ->
     test(1).
