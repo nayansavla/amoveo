@@ -9,7 +9,7 @@
 -define(LOC, constants:block_hashes()).
 init(ok) -> 
     process_flag(trap_exit, true),
-    io:fwrite("start block_hashes\n"),
+    %io:fwrite("start block_hashes\n"),
     X = db:read(?LOC),
     K = if
 	    X == "" -> #d{set = i_new()};
@@ -42,7 +42,7 @@ handle_call({add, H}, _From, X) ->
 	     true ->
 		 X#d{list = L2, set = N}
 	 end,
-    db:save(?LOC, X2),%This line is only necessary for power failures
+    %db:save(?LOC, X2),%This line is only necessary for power failures
     {reply, ok, X2};
 handle_call({check, H}, _From, X) ->
     B = i_check(H, X#d.set), 

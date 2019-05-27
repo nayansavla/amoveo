@@ -97,6 +97,14 @@ store(K, V, D)->
             
             
 handle_info(_, X) -> {noreply, X}.
+handle_cast({write_empty, Block, Hash}, X) -> 
+    D2 = store(Hash, Block, X#d.dict),
+    X2 = X#d{dict = D2, ram_bytes = X#d.ram_bytes, many_blocks = X#d.many_blocks},
+    X4 = case element(2, Block) of
+             0 -> X2#d{genesis = Block};
+             _ -> X2
+         end,
+    {noreply, X4};
 handle_cast({write, Block, Hash}, X) -> 
     S = size(erlang:term_to_binary(Block)),
     D2 = store(Hash, Block, X#d.dict),
@@ -129,16 +137,25 @@ handle_call({read, Hash}, _From, X) ->
                 end
         end,
     {reply, R, X};
-handle_call({read, Many, Height, B}, _From, X) 
+handle_call({read, 0, Height, _B}, _From, X) 
   when (Height >= X#d.ram_height) -> 
+    {reply, {ok, []}, X};
+handle_call({read, Many0, Height, B}, _From, X) 
+  when (Height >= X#d.ram_height) -> 
+    BHeight = B#block.height,
     H = block:height(),
-    H2 = min(H, Height + Many),
-    M = max(1, 1 + H2 - Height),
-    %B = block:get_by_height(X),
+    Many = min(Many0 - 1, H - Height),
+    M = min(Many, BHeight),
     BH = block:prev_hash(0, B),
     RH = X#d.ram_height,
     Y = lists:reverse([B|read_dict2(M, BH, X, RH)]),
-    %Y = [B|read_dict2(M, BH, X#d.dict, RH)],
+
+    %H = block:height(),
+    %H2 = min(H, Height + Many),
+    %M = max(1, 1 + H2 - Height),
+    %BH = block:prev_hash(0, B),
+    %RH = X#d.ram_height,
+    %Y = lists:reverse([B|read_dict2(M, BH, X, RH)]),
     {reply, {ok, Y}, X};
 handle_call({read_by_height, Height}, _From, X) ->
     Page = case find_page_loc(Height, X#d.pages, 0) of
@@ -404,9 +421,10 @@ read(Many, Height) ->
                     read_by_height(Height);
                 true ->
                     %io:fwrite("read hd block\n"),
-                    X = min(H, Height + Many),
+                    X = min(H, Height + Many - 1),
                     Block = block:get_by_height(X),
-                    {ok, Z} = gen_server:call(?MODULE, {read, Many, Height, Block}),
+                    D = max(0, Height - H),
+                    {ok, Z} = gen_server:call(?MODULE, {read, Many-D, Height-D, Block}),
                     Z
             end
     end.
@@ -436,14 +454,22 @@ read(Hash) ->
 
 write(Block, Hash) ->
     {ok, Version} = application:get_env(amoveo_core, db_version),
+    Height = Block#block.height,
+    Block2 = case Height of
+                 0 -> Block;
+                 _ ->
+                    {ok, PrevHeader} = headers:read(Block#block.prev_hash),
+                    PrevHashes = block:calculate_prev_hashes(PrevHeader),
+                    Block#block{prev_hashes = PrevHashes}
+             end,
     case Version of
         1 ->
-            CompressedBlockPlus = compress(Block),
+            CompressedBlockPlus = compress(Block2),
                                                 %Hash = block:hash(Block),
             BlockFile = binary_to_file_path(blocks, Hash),
             ok = db:save(BlockFile, CompressedBlockPlus);
         _ ->
-            gen_server:cast(?MODULE, {write, Block, Hash})
+                gen_server:cast(?MODULE, {write, Block2, Hash})
     end.
 check() ->
     gen_server:call(?MODULE, check).
