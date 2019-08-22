@@ -15,3 +15,5 @@ If we can make a prediction market that provides any sort of evidence on which g
 
 Ideally we could get opposing political movements to move part of their battle-ground onto Amoveo. So they would be paying for markets to prove facts to support their positions.
 That would be one kind of product market fit.
+
+It is very important to have the oracle decentralized....
